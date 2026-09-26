@@ -1,4 +1,17 @@
 import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    confusion_matrix,
+    classification_report,
+    roc_auc_score,
+    brier_score_loss
+)
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.calibration import FrozenEstimator
 
 
 # ============================================================
@@ -460,3 +473,258 @@ print("""
 """)
 
 
+# ============================================================
+# Phase 7 — Train/Test Split
+# ============================================================
+
+print("\n========== PHASE 7: TRAIN/TEST SPLIT ==========")
+
+split_index = int(len(df) * 0.80)
+
+X_train = X.iloc[:split_index]
+X_test = X.iloc[split_index:]
+
+y_train = y.iloc[:split_index]
+y_test = y.iloc[split_index:]
+
+print("\nTraining data shape:")
+print("X_train:", X_train.shape)
+print("y_train:", y_train.shape)
+
+print("\nTesting data shape:")
+print("X_test:", X_test.shape)
+print("y_test:", y_test.shape)
+
+print("\nTraining period:")
+print("Start:", df["time"].iloc[0])
+print("End:", df["time"].iloc[split_index - 1])
+
+print("\nTesting period:")
+print("Start:", df["time"].iloc[split_index])
+print("End:", df["time"].iloc[-1])
+
+print("\nTraining target distribution:")
+print(y_train.value_counts())
+
+print("\nTesting target distribution:")
+print(y_test.value_counts())
+
+print("\n========== PHASE 7 COMPLETE ==========")
+
+
+# ============================================================
+# Phase 8 — Model Training
+# ============================================================
+
+print("\n========== PHASE 8: MODEL TRAINING ==========")
+
+# Split the training data into:
+# 80% for model training
+# 20% for probability calibration
+
+calibration_split = int(len(X_train) * 0.80)
+
+X_model_train = X_train.iloc[:calibration_split]
+y_model_train = y_train.iloc[:calibration_split]
+
+X_calibration = X_train.iloc[calibration_split:]
+y_calibration = y_train.iloc[calibration_split:]
+
+print("\nModel training data:")
+print("X_model_train:", X_model_train.shape)
+print("y_model_train:", y_model_train.shape)
+
+print("\nCalibration data:")
+print("X_calibration:", X_calibration.shape)
+print("y_calibration:", y_calibration.shape)
+
+print("\nModel training period:")
+print("Start:", df["time"].iloc[0])
+print("End:", df["time"].iloc[calibration_split - 1])
+
+print("\nCalibration period:")
+print("Start:", df["time"].iloc[calibration_split])
+print("End:", df["time"].iloc[split_index - 1])
+
+
+model = RandomForestClassifier(
+    n_estimators=150,
+    max_depth=12,
+    min_samples_leaf=3,
+    class_weight="balanced",
+    random_state=42,
+    n_jobs=-1
+)
+
+print("\nTraining Random Forest...")
+
+model.fit(X_model_train, y_model_train)
+
+print("Model training completed.")
+
+print("\nNumber of trees:")
+print(model.n_estimators)
+
+print("\nTraining accuracy:")
+print(model.score(X_model_train, y_model_train))
+
+print("\n========== PHASE 8 COMPLETE ==========")
+
+
+# ============================================================
+# Phase 9 — Model Evaluation
+# ============================================================
+
+print("\n========== PHASE 9: MODEL EVALUATION ==========")
+
+#Make predictions on unseen test data
+y_pred = model.predict(X_test)
+
+#Get rain probabilities
+y_probability = model.predict_proba(X_test)[:, 1]
+
+#Classification metrics
+accuracy = accuracy_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred)
+f1 = f1_score(y_test, y_pred)
+
+print("\nClassification Metrics:")
+print("Accuracy:", accuracy)
+print("Precision:", precision)
+print("Recall:", recall)
+print("F1 Score:", f1)
+
+#Confusion Matrix
+cm = confusion_matrix(y_test, y_pred)
+print(cm)
+
+#Detailed classification report
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred))
+
+#ROC-AUC
+roc_auc = roc_auc_score(y_test, y_probability)
+
+print("ROC-AUC:", roc_auc)
+
+#Brier score
+brier = brier_score_loss(y_test, y_probability)
+
+print("Brier Score:", brier)
+
+print("\nsample predictions:")
+print(y_pred[:10])
+
+print("\nSample rain probabilities:")
+print(y_probability[:10])
+
+print("\n========== PHASE 9 COMPLETE ==========")
+
+
+# ============================================================
+# Phase 10 — Probability Calibration
+# ============================================================
+
+print("\n========== PHASE 10: PROBABILITY CALIBRATION ==========")
+
+calibrated_model = CalibratedClassifierCV(
+    estimator=FrozenEstimator(model),
+    method="sigmoid"
+)
+
+print("\nCalibrating probabilities...")
+
+calibrated_model.fit(
+    X_calibration,
+    y_calibration
+)
+
+print("Probability calibration completed.")
+
+# Generate calibrated probabilities on untouched test data
+calibrated_probability = (
+    calibrated_model.predict_proba(X_test)[:, 1]
+)
+
+# Convert probabilities to class predictions
+calibrated_pred = (
+    calibrated_probability >= 0.50
+).astype(int)
+
+# Evaluate calibrated probabilities
+calibrated_brier = brier_score_loss(
+    y_test,
+    calibrated_probability
+)
+
+calibrated_roc_auc = roc_auc_score(
+    y_test,
+    calibrated_probability
+)
+
+print("\nOriginal Brier Score:")
+print(brier)
+
+print("\nCalibrated Brier Score:")
+print(calibrated_brier)
+
+print("\nOriginal ROC-AUC:")
+print(roc_auc)
+
+print("\nCalibrated ROC-AUC:")
+print(calibrated_roc_auc)
+
+print("\nSample calibrated probabilities:")
+print(calibrated_probability[:10])
+
+print("\nSample calibrated probabilities (%):")
+print(
+    calibrated_probability[:10] * 100
+)
+
+print("\n========== PHASE 10 COMPLETE ==========")
+
+
+# ============================================================
+# Phase 11 — Model Selection & Saving
+# ============================================================
+
+print("\n========== PHASE 11: MODEL SELECTION & SAVING ==========")
+
+import joblib
+import os
+
+#Create model directory
+os.makedirs("models", exist_ok=True)
+
+#Save calibrated model
+joblib.dump(
+    calibrated_model,
+    "models/indore_rainfall_model.joblib"
+)
+
+#Save feature information
+model_info = {
+    "features": features,
+    "target": "rain_next_hour",
+    "model_type": "Random Forest + Sigmoid Calibration",
+    "calibration_method": "sigmoid"
+}
+
+joblib.dump(
+    model_info,
+    "models/model_info.joblib"
+)
+
+print("\nModel saved successfully.")
+print("Model path: models/indore_rainfall_model.joblib")
+
+print("\nModel information saved successfully.")
+print("Info path: models/model_info.joblib")
+
+print("\nFeatures used:")
+for feature in features:
+    print("-", feature)
+
+print("\n========== PHASE 11 COMPLETE ==========")
