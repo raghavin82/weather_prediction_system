@@ -53,9 +53,9 @@ print("INDORE RAINFALL PREDICTION")
 print("================================")
 
 # Interpret probability
-if rain_probability < 30:
+if rain_probability_percent < 30:
     chance = "Low"
-elif rain_probability <60:
+elif rain_probability_percent <60:
     chance = "Moderate"
 else:
     chance = "High"
